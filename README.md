@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-# video-codec
-=======
-# README.md
-
 # Video Codec Project
 
 This project implements a video encoding and decoding system. The encoder compresses video files into a more compact format, while the decoder reconstructs the original video from the encoded file.
@@ -23,6 +18,12 @@ video-codec
 ├── Makefile               # Build automation using make
 └── README.md              # Project documentation
 ```
+
+## Dependencies
+
+- FFmpeg libraries (libavcodec, libavformat, libswscale)
+
+sudo apt-get install libavcodec-dev libavformat-dev libswscale-dev
 
 ## Building the Project
 
@@ -69,13 +70,3 @@ After building the project, you can run the encoder and decoder from the command
 ./decoder <input_encoded_file> <output_video_file>
 ```
 
-## Dependencies
-
-- FFmpeg libraries (libavcodec, libavformat, libswscale)
-
-Make sure to install the necessary dependencies before building the project.
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for more details.
->>>>>>> c227d51 (initial)
