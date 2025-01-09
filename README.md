@@ -2,23 +2,6 @@
 
 This project implements a video encoding and decoding system. The encoder compresses video files into a more compact format, while the decoder reconstructs the original video from the encoded file.
 
-## Project Structure
-
-```
-video-codec
-├── src
-│   ├── encoder.c         # Implementation of video encoding functionality
-│   ├── decoder.c         # Implementation of video decoding functionality
-│   ├── codec_utils.c     # Utility functions for encoder and decoder
-│   └── codec_utils.h     # Header file for utility functions
-├── tests
-│   ├── test_encoder.c     # Unit tests for the encoder
-│   └── test_decoder.c     # Unit tests for the decoder
-├── CMakeLists.txt        # Build configuration for CMake
-├── Makefile               # Build automation using make
-└── README.md              # Project documentation
-```
-
 ## Dependencies
 
 - FFmpeg libraries (libavcodec, libavformat, libswscale)
