@@ -64,19 +64,27 @@ void encode(const char* input_filename, const char* output_filename) {
     codec_ctx->width = in_stream->codecpar->width;
     codec_ctx->sample_aspect_ratio = in_stream->codecpar->sample_aspect_ratio;
     codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
-    codec_ctx->time_base = (AVRational){1, 25};
-    codec_ctx->framerate = (AVRational){25, 1};
-    
-    // Set encoding parameters for better compression
-    codec_ctx->bit_rate = 2000000;  // 2Mbps
-    codec_ctx->gop_size = 12;
-    codec_ctx->max_b_frames = 2;
-    
-    // Set H.264 specific options
+    codec_ctx->time_base = (AVRational){1, 30};
+    codec_ctx->framerate = (AVRational){30, 1};
+
+    // Improve compression settings with better quality
+    codec_ctx->bit_rate = 800000;  // Increase bitrate to 800Kbps for better quality
+    codec_ctx->gop_size = 120;     // Reduce GOP size for better quality
+    codec_ctx->max_b_frames = 2;    // Reduce B-frames slightly
+    codec_ctx->flags |= AV_CODEC_FLAG_CLOSED_GOP;
+
+    // Configure rate control
+    codec_ctx->rc_min_rate = codec_ctx->bit_rate;
+    codec_ctx->rc_max_rate = codec_ctx->bit_rate;
+    codec_ctx->rc_buffer_size = codec_ctx->bit_rate * 2;
+
+    // Set H.264 specific options for better quality while maintaining compression
     AVDictionary *opts = NULL;
-    av_dict_set(&opts, "preset", "medium", 0);
-    av_dict_set(&opts, "tune", "film", 0);
-    av_dict_set(&opts, "crf", "23", 0);
+    av_dict_set(&opts, "preset", "medium", 0);     // Balance between speed and quality
+    av_dict_set(&opts, "tune", "film", 0);         // Optimize for video content
+    av_dict_set(&opts, "crf", "23", 0);            // Lower CRF for better quality (default is 23)
+    av_dict_set(&opts, "profile", "main", 0);      // Use main profile for better quality
+    av_dict_set(&opts, "level", "3.1", 0);         // Slightly higher level
 
     // Open encoder
     if (avcodec_open2(codec_ctx, codec, &opts) < 0) {
