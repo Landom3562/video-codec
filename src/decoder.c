@@ -1,7 +1,11 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
-#include "codec_utils.h"
+
+void handle_error(const char *message) {
+    fprintf(stderr, "Error: %s\n", message);
+    exit(EXIT_FAILURE);
+}
 
 void decode(const char* input_filename, const char* output_filename) {
     AVFormatContext *input_ctx = NULL, *output_ctx = NULL;
