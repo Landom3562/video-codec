@@ -43,18 +43,6 @@ typedef struct {
     unsigned char r, g, b;
 } Pixel;
 
-// CUDA kernel to invert colors
-__global__ void invert_colors_kernel(Pixel* d_pixels, int width, int height) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x < width && y < height) {
-        int idx = y * width + x;
-        d_pixels[idx].r = 255 - d_pixels[idx].r;
-        d_pixels[idx].g = 255 - d_pixels[idx].g;
-        d_pixels[idx].b = 255 - d_pixels[idx].b;
-    }
-}
 
 // CUDA kernel to encode BMP image into raw pixel data
 __global__ void encode_bmp_kernel(Pixel* d_pixels, unsigned char* d_raw_data, int width, int height, int padding) {
@@ -68,21 +56,6 @@ __global__ void encode_bmp_kernel(Pixel* d_pixels, unsigned char* d_raw_data, in
         d_raw_data[rawIdx] = d_pixels[pixelIdx].b;
         d_raw_data[rawIdx + 1] = d_pixels[pixelIdx].g;
         d_raw_data[rawIdx + 2] = d_pixels[pixelIdx].r;
-    }
-}
-
-// CUDA kernel to decode raw BMP pixel data
-__global__ void decode_bmp_kernel(unsigned char* d_raw_data, Pixel* d_pixels, int width, int height, int padding) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x < width && y < height) {
-        int rawIdx = y * (width * 3 + padding) + x * 3;
-        int pixelIdx = y * width + x;
-
-        d_pixels[pixelIdx].b = d_raw_data[rawIdx];
-        d_pixels[pixelIdx].g = d_raw_data[rawIdx + 1];
-        d_pixels[pixelIdx].r = d_raw_data[rawIdx + 2];
     }
 }
 
