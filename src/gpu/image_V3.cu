@@ -43,19 +43,6 @@ typedef struct {
     unsigned char r, g, b;
 } Pixel;
 
-// CUDA kernel to invert colors
-__global__ void invert_colors_kernel(Pixel* d_pixels, int width, int height) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x < width && y < height) {
-        int idx = y * width + x;
-        d_pixels[idx].r = 255 - d_pixels[idx].r;
-        d_pixels[idx].g = 255 - d_pixels[idx].g;
-        d_pixels[idx].b = 255 - d_pixels[idx].b;
-    }
-}
-
 // CUDA kernel to encode BMP image into raw pixel data
 __global__ void encode_bmp_kernel(Pixel* d_pixels, unsigned char* d_raw_data, int width, int height, int padding) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -68,21 +55,6 @@ __global__ void encode_bmp_kernel(Pixel* d_pixels, unsigned char* d_raw_data, in
         d_raw_data[rawIdx] = d_pixels[pixelIdx].b;
         d_raw_data[rawIdx + 1] = d_pixels[pixelIdx].g;
         d_raw_data[rawIdx + 2] = d_pixels[pixelIdx].r;
-    }
-}
-
-// CUDA kernel to decode raw BMP pixel data
-__global__ void decode_bmp_kernel(unsigned char* d_raw_data, Pixel* d_pixels, int width, int height, int padding) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x < width && y < height) {
-        int rawIdx = y * (width * 3 + padding) + x * 3;
-        int pixelIdx = y * width + x;
-
-        d_pixels[pixelIdx].b = d_raw_data[rawIdx];
-        d_pixels[pixelIdx].g = d_raw_data[rawIdx + 1];
-        d_pixels[pixelIdx].r = d_raw_data[rawIdx + 2];
     }
 }
 
@@ -228,6 +200,7 @@ int main(int argc, char** argv) {
 
     // Create frames directory
     mkdir("frames", 0777);
+    mkdir("output", 0777);
 
     // Extract frames from video
     char ffmpeg_command[256];
@@ -261,7 +234,7 @@ int main(int argc, char** argv) {
         char frame_filename[256];
         snprintf(frame_filename, sizeof(frame_filename), "frames/frame_%04d.bmp", i + 1);
         read_bmp(frame_filename, &raw_data[i], &widths[i], &heights[i]);
-        printf("Frame %d: %d x %d\n", i, widths[i], heights[i]);
+        // printf("Frame %d: %d x %d\n", i, widths[i], heights[i]);
         if (raw_data[i] == NULL) {
             fprintf(stderr, "Failed to read BMP file: %s\n", frame_filename);
             return 1;
@@ -269,24 +242,19 @@ int main(int argc, char** argv) {
         pixels[i] = (Pixel*)malloc(widths[i] * heights[i] * sizeof(Pixel));
     }
 
-    Pixel** d_frameArray;
-    cudaMalloc((void**)&d_frameArray, num_frames * sizeof(Pixel*));
+    Pixel** d_pixelArray;
+    cudaMallocHost((void***)&d_pixelArray, num_frames * sizeof(Pixel*));
     unsigned char** d_raw_data_array;
-    cudaMalloc((void**)&d_raw_data_array, num_frames * sizeof(unsigned char*));
+    cudaMallocHost((void***)&d_raw_data_array, num_frames * sizeof(unsigned char*));
 
-    Pixel** h_pixelArray = (Pixel**)malloc(num_frames * sizeof(Pixel*));
-    unsigned char** h_raw_data_array = (unsigned char**)malloc(num_frames * sizeof(unsigned char*));
+    // It is assumed that all frames have the same dimensions
+    int padding = ((4 - (widths[0] * 3) % 4) % 4);
+    int rawSize = heights[0] * (widths[0] * 3 + padding);
 
     for (int i = 0; i < num_frames; ++i) {
-        int padding = ((4 - (widths[i] * 3) % 4) % 4);
-        int rawSize = heights[i] * (widths[i] * 3 + padding);
-        printf("Processing frame %d\n", i);
-        cudaMalloc((void**)&h_raw_data_array[i], rawSize);
-        cudaMalloc((void**)&h_pixelArray[i], widths[i] * heights[i] * sizeof(Pixel));
+        cudaMalloc((void**)&d_raw_data_array[i], rawSize);
+        cudaMalloc((void**)&d_pixelArray[i], widths[i] * heights[i] * sizeof(Pixel));
     }
-
-    cudaMemcpy(d_raw_data_array, h_raw_data_array, num_frames * sizeof(unsigned char*), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_frameArray, h_pixelArray, num_frames * sizeof(Pixel*), cudaMemcpyHostToDevice);
 
     int num_streams = 8;
     cudaStream_t streams[num_streams];
@@ -295,23 +263,30 @@ int main(int argc, char** argv) {
         cudaStreamCreate(&streams[i]);
     }
 
+    
     for (int i = 0; i < num_frames; ++i) {
-        int padding = ((4 - (widths[i] * 3) % 4) % 4);
-        int rawSize = heights[i] * (widths[i] * 3 + padding);
-        cudaMemcpyAsync(h_raw_data_array[i], raw_data[i], rawSize, cudaMemcpyHostToDevice, streams[i % num_streams]);
+        cudaMemcpyAsync(d_raw_data_array[i], raw_data[i], rawSize, cudaMemcpyHostToDevice, streams[i % num_streams]);
         dim3 blockSize(16, 16);
         dim3 gridSize((widths[i] + blockSize.x - 1) / blockSize.x, 
                       (heights[i] + blockSize.y - 1) / blockSize.y);
-        process_frame_kernel<<<gridSize, blockSize, 0, streams[i % num_streams]>>>(d_raw_data_array, d_frameArray, widths[i], heights[i], padding, i);
+        process_frame_kernel<<<gridSize, blockSize, 0, streams[i % num_streams]>>>(d_raw_data_array, d_pixelArray, widths[i], heights[i], padding, i);
     }
 
     for (int i = 0; i < num_frames; ++i) {
-        cudaMemcpyAsync(pixels[i], h_pixelArray[i], widths[i] * heights[i] * sizeof(Pixel), cudaMemcpyDeviceToHost, streams[i % num_streams]);
+        cudaMemcpyAsync(pixels[i], d_pixelArray[i], widths[i] * heights[i] * sizeof(Pixel), cudaMemcpyDeviceToHost, streams[i % num_streams]);
     }
 
     for (int i = 0; i < num_streams; ++i) {
         cudaStreamSynchronize(streams[i]);
     }
+
+    for (int i = 0; i < num_frames; ++i) {
+        cudaFree(d_raw_data_array[i]);
+        cudaFree(d_pixelArray[i]);
+    }
+
+    cudaFree(d_raw_data_array);
+    cudaFree(d_pixelArray);
 
     for (int i = 0; i < num_frames; ++i) {
         char output_filename[256];
@@ -325,16 +300,7 @@ int main(int argc, char** argv) {
         cudaStreamDestroy(streams[i]);
     }
 
-    for (int i = 0; i < num_frames; ++i) {
-        cudaFree(h_raw_data_array[i]);
-        cudaFree(h_pixelArray[i]);
-    }
 
-    cudaFree(d_raw_data_array);
-    cudaFree(d_frameArray);
-
-    free(h_raw_data_array);
-    free(h_pixelArray);
     free(raw_data);
     free(pixels);
     free(widths);
@@ -348,9 +314,11 @@ int main(int argc, char** argv) {
     snprintf(ffmpeg_command, sizeof(ffmpeg_command), "ffmpeg -framerate 30 -i output/frame_%%04d.bmp %s", output_video);
     run_ffmpeg_command(ffmpeg_command);
 
-    // Cleanup
+    // Clean up
     snprintf(ffmpeg_command, sizeof(ffmpeg_command), "rm -rf frames output");
     run_ffmpeg_command(ffmpeg_command);
+    
+
 
     return 0;
 }

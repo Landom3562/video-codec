@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <chrono>
 
 #pragma pack(push, 1)
 typedef struct {
@@ -313,8 +314,14 @@ int main(int argc, char* argv[]) {
         mkdir(output_dir, 0700);
     }
 
+    auto start = std::chrono::high_resolution_clock::now();
+
     // Process all BMP files in the input directory
     process_images_in_directory(input_dir, output_dir);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    printf("Total runtime: %f seconds\n", duration.count());
 
     // Combine processed frames into a video
     snprintf(command, sizeof(command), "ffmpeg -framerate 30 -i %s/frame_%%04d.bmp %s", output_dir, output_path);
